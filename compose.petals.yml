@@ -1,0 +1,74 @@
+name: cat-on-petals
+services:
+  cheshire-cat-core:
+    container_name: cheshire_cat_core
+    build:
+      context: ./core/core
+    environment:
+      PYTHONUNBUFFERED: 1
+      WATCHFILES_FORCE_POLLING: true
+      CORE_HOST: ${CORE_HOST:-localhost}
+      CORE_PORT: ${CORE_PORT:-1865}
+      CORE_USE_SECURE_PROTOCOLS: ${CORE_USE_SECURE_PROTOCOLS:-false}
+      API_KEY: ${API_KEY:-}
+      QDRANT_HOST: ${QDRANT_HOST:-cheshire_cat_vector_memory}
+      QDRANT_PORT: ${QDRANT_PORT:-6333}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      DEBUG: ${DEBUG:-false}
+      SAVE_MEMORY_SNAPSHOTS: ${SAVE_MEMORY_SNAPSHOTS:-false}
+      HUGGINGFACE_TOKEN: ${HUGGINGFACE_TOKEN:-}
+    ports:
+      - "${CORE_PORT:-1865}:80"
+      - 5678:5678
+    volumes:
+      - ./core/core:/app
+      - ./cat/static:/app/cat/static
+      - ./cat/plugins:/app/cat/plugins
+      - ./cat/data:/app/cat/data
+    command:
+      - python
+      - "-m"
+      - "cat.main"
+    restart: unless-stopped
+
+  # enable this if you want to use qdrant
+
+  # cheshire-cat-vector-memory:
+  #   image: qdrant/qdrant:v1.9.1
+  #   container_name: cheshire_cat_vector_memory
+  #   environment:
+  #     LOG_LEVEL: ${LOG_LEVEL:-WARNING}
+  #   expose:
+  #     - ${QDRANT_PORT:-6333}
+  #   volumes:
+  #     - ./cat/long_term_memory/vector:/qdrant/storage
+  #   restart: unless-stopped
+
+  petals:
+    image: learningathome/petals:main
+    container_name: petals
+    command: 
+      - /bin/bash
+      - -c
+      - |
+        set -e
+        huggingface-cli login --token $HUGGINGFACE_TOKEN --add-to-git-credential
+        python -m petals.cli.run_server \
+        --public_name ${PUBLIC_NAME:-username} \
+        --port 31330 \
+        --balance_quality 0.2 \
+        --num_blocks ${PETAL_NUM_BLOCKS:-36} \
+        --max_disk_space ${PETAL_MAX_DISK_SPACE:-10GB} \
+        ${PETAL_MODEL_NAME:-codellama/CodeLlama-7b-Instruct-hf}
+    ipc: host
+    ports:
+      - 31330:31330
+    volumes:
+      - ./petals-cache:/cache
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [ gpu ]
